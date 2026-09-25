@@ -1,21 +1,35 @@
 import ScreenCaptureKit
 import CoreGraphics
+import AppKit
 
 enum ScreenCapture {
+    /// Captures only the frontmost app's main window, not the whole display —
+    /// avoids sweeping up menu bar, other windows, and browser chrome from other tabs.
     static func captureFrontmostDisplay() async throws -> CGImage {
         let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
+            true,
             onScreenWindowsOnly: true
         )
 
-        guard let display = content.displays.first else {
-            throw CaptureError.noDisplay
+        guard let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+            throw CaptureError.noFrontmostApp
         }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let candidateWindows = content.windows.filter {
+            $0.owningApplication?.processID == frontPID &&
+            $0.windowLayer == 0 &&
+            $0.frame.width > 100 &&
+            $0.frame.height > 100
+        }
+
+        guard let window = candidateWindows.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }) else {
+            throw CaptureError.noWindow
+        }
+
+        let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
-        config.width = display.width * 2
-        config.height = display.height * 2
+        config.width = Int(window.frame.width * 2)
+        config.height = Int(window.frame.height * 2)
         config.showsCursor = false
 
         return try await SCScreenshotManager.captureImage(
@@ -26,5 +40,7 @@ enum ScreenCapture {
 
     enum CaptureError: Error {
         case noDisplay
+        case noFrontmostApp
+        case noWindow
     }
 }

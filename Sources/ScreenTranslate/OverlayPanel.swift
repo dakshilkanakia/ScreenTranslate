@@ -5,13 +5,14 @@ import NaturalLanguage
 
 final class OverlayPanel: NSPanel {
     init(sourceText: String) {
-        let rect = NSRect(x: 0, y: 0, width: 420, height: 260)
+        let rect = NSRect(x: 0, y: 0, width: 480, height: 420)
         super.init(
             contentRect: rect,
-            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .utilityWindow, .hudWindow],
+            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .utilityWindow, .hudWindow, .resizable],
             backing: .buffered,
             defer: false
         )
+        minSize = NSSize(width: 320, height: 220)
 
         isFloatingPanel = true
         level = .floating
@@ -76,7 +77,7 @@ struct OverlayView: View {
             }
         }
         .padding(16)
-        .frame(width: 420, height: 260)
+        .frame(minWidth: 320, minHeight: 220)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.2), lineWidth: 1))
         .onAppear {

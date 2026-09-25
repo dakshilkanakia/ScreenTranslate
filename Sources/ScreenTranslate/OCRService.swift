@@ -10,7 +10,20 @@ enum OCRService {
                     return
                 }
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
-                let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+
+                // Vision's array order isn't guaranteed to be reading order.
+                // boundingBox origin is bottom-left, normalized 0...1, so sort
+                // top-to-bottom (descending y), then left-to-right (ascending x).
+                let sorted = observations.sorted { a, b in
+                    let ay = a.boundingBox.midY
+                    let by = b.boundingBox.midY
+                    if abs(ay - by) > 0.01 {
+                        return ay > by
+                    }
+                    return a.boundingBox.minX < b.boundingBox.minX
+                }
+
+                let lines = sorted.compactMap { $0.topCandidates(1).first?.string }
                 continuation.resume(returning: lines.joined(separator: "\n"))
             }
             request.recognitionLevel = .accurate

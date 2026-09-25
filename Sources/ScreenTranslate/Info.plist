@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSSiriUsageDescription</key>
+    <string>Used to trigger screen translation by voice.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Needed to capture the screen for translation.</string>
+</dict>
+</plist>

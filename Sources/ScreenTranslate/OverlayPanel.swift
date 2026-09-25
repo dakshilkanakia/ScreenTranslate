@@ -81,7 +81,7 @@ struct OverlayView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.2), lineWidth: 1))
         .onAppear {
-            let detected = NLLanguageRecognizer.dominantLanguage(for: sourceText)?.rawValue
+            let detected = Self.dominantLanguage(in: sourceText)
 
             if let detected, detected == targetLanguageCode {
                 alreadyTargetLanguage = true
@@ -99,9 +99,32 @@ struct OverlayView: View {
                 let response = try await session.translate(sourceText)
                 translatedText = response.targetText
             } catch {
-                translatedText = "Translation failed: \(error.localizedDescription)"
+                // Framework refused a same-language pair despite our pre-check;
+                // just show the original text instead of an error.
+                alreadyTargetLanguage = true
             }
             isLoading = false
         }
+    }
+
+    /// Detects dominant language weighted by character count per line, ignoring
+    /// short lines (UI chrome like "PDF", "New Chrome available") that would
+    /// otherwise skew whole-blob detection on mixed-language screenshots.
+    private static func dominantLanguage(in text: String) -> String? {
+        var weights: [String: Int] = [:]
+
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count >= 12 else { continue }
+            guard let lang = NLLanguageRecognizer.dominantLanguage(for: trimmed)?.rawValue else { continue }
+            weights[lang, default: 0] += trimmed.count
+        }
+
+        if let winner = weights.max(by: { $0.value < $1.value })?.key {
+            return winner
+        }
+
+        // Fall back to whole-blob detection if every line was too short.
+        return NLLanguageRecognizer.dominantLanguage(for: text)?.rawValue
     }
 }

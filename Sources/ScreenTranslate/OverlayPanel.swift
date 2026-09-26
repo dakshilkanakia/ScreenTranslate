@@ -114,29 +114,51 @@ struct OverlayView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.2), lineWidth: 1))
         .onAppear {
             let textToTranslate = cleanedText.isEmpty ? sourceText : cleanedText
+            Log.translate.debug("cleanedText length=\(textToTranslate.count, privacy: .public), raw length=\(sourceText.count, privacy: .public)")
+
             let detected = Self.dominantLanguage(in: textToTranslate)
+            Log.translate.debug("detected source language=\(detected ?? "nil", privacy: .public), target=\(targetLanguageCode, privacy: .public)")
 
             if let detected, detected == targetLanguageCode {
+                Log.translate.debug("source == target, skipping translation")
                 status = .alreadyTargetLanguage
                 return
             }
 
+            let sourceLang = detected.map { Locale.Language(identifier: $0) }
+            let targetLang = Locale.Language(identifier: targetLanguageCode)
+
+            Task {
+                let availability = LanguageAvailability()
+                let installStatus = await availability.status(from: sourceLang ?? targetLang, to: targetLang)
+                Log.translate.debug("language pair install status=\(String(describing: installStatus), privacy: .public)")
+            }
+
             configuration = TranslationSession.Configuration(
-                source: detected.map { Locale.Language(identifier: $0) },
-                target: Locale.Language(identifier: targetLanguageCode)
+                source: sourceLang,
+                target: targetLang
             )
         }
         .translationTask(configuration) { session in
             let textToTranslate = cleanedText.isEmpty ? sourceText : cleanedText
+            Log.translate.debug("translationTask started")
             do {
                 let response = try await session.translate(textToTranslate)
                 translatedText = response.targetText
                 status = .translated
+                Log.translate.debug("translation succeeded, output length=\(response.targetText.count, privacy: .public)")
             } catch {
-                // Framework refused the language pairing (same language, or an
-                // unsupported/misdetected one) — fall back to original text
-                // rather than showing a raw error.
-                status = .alreadyTargetLanguage
+                let nsError = error as NSError
+                Log.translate.error("translation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public) userInfo=\(nsError.userInfo, privacy: .public)")
+
+                // If the model needs downloading and the download flow itself
+                // broke (unsigned-app connection drop), say so explicitly
+                // instead of silently pretending nothing needed translating.
+                if nsError.domain == "TranslationErrorDomain" {
+                    status = .error("Translation failed (domain error \(nsError.code)) — check Console app, subsystem com.dakshil.ScreenTranslate, for details. If a language download dialog appeared and vanished, try removing/reinstalling that language in System Settings → General → Language & Region → Translation Languages.")
+                } else {
+                    status = .alreadyTargetLanguage
+                }
             }
         }
     }

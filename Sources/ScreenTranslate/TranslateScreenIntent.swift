@@ -14,11 +14,15 @@ struct TranslateScreenIntent: AppIntent {
 
     @MainActor
     static func runPipeline() async {
+        Log.intent.debug("pipeline started")
         do {
             let image = try await ScreenCapture.captureFrontmostDisplay()
+            Log.intent.debug("capture done: \(image.width, privacy: .public)x\(image.height, privacy: .public)")
+
             let text = try await OCRService.extractText(from: image)
 
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                Log.intent.error("OCR returned empty text")
                 presentError("No text found on screen.")
                 return
             }
@@ -26,6 +30,7 @@ struct TranslateScreenIntent: AppIntent {
             let panel = OverlayPanel(sourceText: text)
             panel.makeKeyAndOrderFront(nil)
         } catch {
+            Log.intent.error("pipeline failed: \(error.localizedDescription, privacy: .public)")
             presentError("Couldn't translate screen: \(error.localizedDescription)")
         }
     }

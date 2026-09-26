@@ -24,7 +24,9 @@ enum OCRService {
                 }
 
                 let lines = sorted.compactMap { $0.topCandidates(1).first?.string }
-                continuation.resume(returning: lines.joined(separator: "\n"))
+                let text = lines.joined(separator: "\n")
+                Log.ocr.debug("extracted \(lines.count, privacy: .public) lines, \(text.count, privacy: .public) chars")
+                continuation.resume(returning: text)
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true

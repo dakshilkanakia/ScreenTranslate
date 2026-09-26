@@ -23,8 +23,11 @@ enum ScreenCapture {
         }
 
         guard let window = candidateWindows.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }) else {
+            Log.capture.error("no candidate window found for frontmost pid=\(frontPID, privacy: .public)")
             throw CaptureError.noWindow
         }
+
+        Log.capture.debug("capturing window title=\(window.title ?? "?", privacy: .public) frame=\(String(describing: window.frame), privacy: .public)")
 
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()

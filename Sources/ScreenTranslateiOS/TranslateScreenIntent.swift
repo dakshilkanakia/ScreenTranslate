@@ -12,17 +12,29 @@ struct TranslateScreenIntent: AppIntent {
     // status, so the paste-permission prompt can appear and be approved.
     static let openAppWhenRun: Bool = true
 
-    func perform() async throws -> some IntentResult & ShowsSnippetView {
+    // Because openAppWhenRun is true, the app's own foreground UI takes over
+    // right as this runs — a returned Snippet View gets torn down before its
+    // async translation can finish (confirmed: OCR completed, text was ready,
+    // but the snippet vanished with nothing shown). So instead of returning a
+    // snippet, hand the extracted text to AppState and let the app's own
+    // foreground view display and translate it — that view isn't ephemeral.
+    func perform() async throws -> some IntentResult {
         Log.intent.debug("iOS pipeline started")
 
         guard let uiImage = await Self.readClipboardImageWithRetries() else {
             Log.intent.error("no image found on clipboard after retries")
-            return .result(view: TranslationSnippetView(sourceText: "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."))
+            await MainActor.run {
+                AppState.shared.pendingSourceText = "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."
+            }
+            return .result()
         }
 
         guard let cgImage = uiImage.cgImage else {
             Log.intent.error("clipboard image had no cgImage")
-            return .result(view: TranslationSnippetView(sourceText: "Clipboard image couldn't be decoded."))
+            await MainActor.run {
+                AppState.shared.pendingSourceText = "Clipboard image couldn't be decoded."
+            }
+            return .result()
         }
 
         let text: String
@@ -30,15 +42,24 @@ struct TranslateScreenIntent: AppIntent {
             text = try await OCRService.extractText(from: cgImage)
         } catch {
             Log.intent.error("OCR failed: \(error.localizedDescription, privacy: .public)")
-            return .result(view: TranslationSnippetView(sourceText: "OCR failed: \(error.localizedDescription)"))
+            await MainActor.run {
+                AppState.shared.pendingSourceText = "OCR failed: \(error.localizedDescription)"
+            }
+            return .result()
         }
 
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             Log.intent.error("OCR returned empty text")
-            return .result(view: TranslationSnippetView(sourceText: "No text found in that screenshot."))
+            await MainActor.run {
+                AppState.shared.pendingSourceText = "No text found in that screenshot."
+            }
+            return .result()
         }
 
-        return .result(view: TranslationSnippetView(sourceText: text))
+        await MainActor.run {
+            AppState.shared.pendingSourceText = text
+        }
+        return .result()
     }
 
     /// UIPasteboard.general reads have been unreliable right after Shortcuts'

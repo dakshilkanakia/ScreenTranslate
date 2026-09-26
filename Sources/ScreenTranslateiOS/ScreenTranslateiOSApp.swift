@@ -11,6 +11,7 @@ struct ScreenTranslateiOSApp: App {
 
 struct ContentView: View {
     @State private var showTestTranslate = false
+    @ObservedObject private var appState = AppState.shared
 
     var body: some View {
         VStack(spacing: 16) {
@@ -42,6 +43,27 @@ struct ContentView: View {
         .padding()
         .sheet(isPresented: $showTestTranslate) {
             TestTranslateView()
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { appState.pendingSourceText != nil },
+            set: { if !$0 { appState.pendingSourceText = nil } }
+        )) {
+            if let text = appState.pendingSourceText {
+                NavigationStack {
+                    ScrollView {
+                        TranslationSnippetView(sourceText: text)
+                    }
+                    .navigationTitle("Translation")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                appState.pendingSourceText = nil
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

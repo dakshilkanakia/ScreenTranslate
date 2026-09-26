@@ -1,43 +1,49 @@
 # ScreenTranslate
 
-Say "Hey Siri, translate my screen" — it screenshots the display, OCRs the text, translates it, and shows the result in a small translucent overlay panel. No app switching.
+Say "Hey Siri, translate my screen" — it captures the frontmost window, OCRs the text, translates it, and shows the result in a small floating overlay panel. No app switching, no copy-paste.
 
 ## How it works
 
-1. `TranslateScreenIntent` (App Intents) is the Siri entry point, registered via `ScreenTranslateShortcuts`.
-2. `ScreenCapture.swift` grabs the frontmost display via ScreenCaptureKit.
-3. `OCRService.swift` runs Vision text recognition on the captured image.
-4. `OverlayPanel.swift` shows a floating `NSPanel` with the extracted text, translated on-device via the `Translation` framework.
-5. Menu bar icon (`ScreenTranslateApp.swift`) also lets you trigger it manually (⌘⇧T) without Siri.
+1. `ScreenCapture.swift` grabs the frontmost app's main window via ScreenCaptureKit (not the whole display — avoids sweeping up other windows), then crops off the top ~92pt to strip out browser chrome (tab strip, address bar, update banners), which otherwise pollutes both OCR and language detection.
+2. `OCRService.swift` runs Vision text recognition on the captured image, sorting results into proper top-to-bottom reading order (Vision's raw array order isn't guaranteed to match it).
+3. `OverlayPanel.swift` shows a floating `NSPanel` with the extracted text, translated on-device via the `Translation` framework. Source language is auto-detected by the framework itself (`source: nil`) — an earlier attempt to pre-detect it locally proved unreliable on mixed-language/technical text.
+4. `TranslateScreenIntent` (App Intents) is the Siri/Shortcuts entry point, registered via `ScreenTranslateShortcuts`.
+5. Menu bar icon (`ScreenTranslateApp.swift`) also triggers it manually (⌘⇧T), no Siri needed.
 
 ## Setup
 
-**Open `ScreenTranslate.xcodeproj`, not `Package.swift`.** The project is a real signed macOS App target (generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`) — a loose SwiftPM executable can't register with Siri/Shortcuts or reliably use the Translation framework's download flow, since neither has a trusted bundle identity to hand the system.
+1. **Generate the Xcode project** (not tracked in git — regenerable from `project.yml`, and this avoids baking your personal Apple Developer Team ID into a committed file):
+   ```
+   brew install xcodegen   # one-time
+   xcodegen generate
+   ```
+2. Open `ScreenTranslate.xcodeproj` in Xcode (Xcode 16+, macOS 15 Sequoia+ required for the `Translation` framework).
+3. Select the `ScreenTranslate` target → **Signing & Capabilities** → set **Team** to your Apple ID, signing certificate **"Development"** (not "Sign to Run Locally" — that's ad-hoc and won't register with Siri/Shortcuts or Translation's trusted download flow). A free "Personal Team" is enough, no paid enrollment needed.
+4. Build & run (⌘R). First run: macOS prompts for **Screen Recording** permission — grant it in System Settings → Privacy & Security, then relaunch.
+5. Launch it at least once so Siri/Shortcuts indexes the app's App Shortcuts (happens on launch, not on build).
 
-1. Open `ScreenTranslate.xcodeproj` in Xcode (Xcode 16+, macOS 15 Sequoia+ required for the `Translation` framework).
-2. Select the `ScreenTranslate` target → **Signing & Capabilities** → set **Team** to your Apple ID (a free "Personal Team" is enough for local device testing, no paid enrollment needed).
-3. Build & run (⌘R). First run: macOS prompts for **Screen Recording** permission — grant it in System Settings → Privacy & Security, then relaunch.
-4. Launch it at least once so Siri/Shortcuts indexes the App Shortcuts (happens on launch, not on build).
-5. In the **Shortcuts** app, search actions for "Screen Translate" — it should now appear. Build a Shortcut around it and use "Add to Siri" to record any custom phrase you want (e.g. bare "Translate my screen"), bypassing the `\(.applicationName)`-in-phrase requirement that direct App Shortcut phrases have.
+## Wiring up the Siri phrase
 
-### Regenerating the Xcode project
+App Shortcut phrases registered directly in code must include the app name (an Apple platform requirement), so to get a bare custom phrase like "translate my screen":
 
-If you edit `project.yml` (e.g. change bundle ID, add capabilities), regenerate with:
-```
-brew install xcodegen  # one-time
-xcodegen generate
-```
+1. Open the **Shortcuts** app → new shortcut → search actions for "Screen Translate" → add its action.
+2. Name the shortcut exactly what you want to say, e.g. **"Translate my screen"**. On current macOS, a saved shortcut's name is automatically usable as a Siri trigger phrase — no separate "Add to Siri" step needed.
+3. Say "Hey Siri, translate my screen" on any foreign-language window.
 
-### Package.swift
+If the app doesn't show up as an action in Shortcuts at all: make sure you're running the signed `.xcodeproj` build (step 3 above) — a loose `swift build` binary has no trusted bundle identity and won't register.
 
-Still present for quick `swift build` sanity checks from the command line — but it's not what you should open in Xcode for real testing, since it can't do Siri/Shortcuts registration or the Translation framework's trusted download flow.
+## Known limitations
+
+- First use of a new source language triggers a system dialog to download that on-device language model (one-time per language).
+- The top-chrome crop (92pt) is tuned for Chrome's tab strip + toolbar; other apps or a hidden Chrome tab bar may need a different value.
+- macOS only. No draw-over-other-apps overlay exists on iOS, so a phone version would need a different UI approach (App Intent Snippet View) — not built here.
 
 ## Status
 
-- [x] Screen capture (ScreenCaptureKit)
-- [x] OCR (Vision)
-- [x] On-device translation (Translation framework)
+- [x] Frontmost-window capture (ScreenCaptureKit), cropped to skip browser chrome
+- [x] OCR with reading-order sorting (Vision)
+- [x] On-device translation, framework auto-detects source language (Translation framework)
 - [x] Floating overlay panel
-- [x] Siri phrase trigger
-- [ ] Language picker (currently auto-detects source, translates to system language)
-- [ ] iOS target (Snippet View version)
+- [x] Siri/Shortcuts trigger via a real signed app target
+- [ ] Language picker (currently always translates to system language)
+- [ ] iOS target

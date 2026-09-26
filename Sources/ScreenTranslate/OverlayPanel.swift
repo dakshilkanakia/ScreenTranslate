@@ -115,6 +115,7 @@ struct OverlayView: View {
         .onAppear {
             let textToTranslate = cleanedText.isEmpty ? sourceText : cleanedText
             Log.translate.debug("cleanedText length=\(textToTranslate.count, privacy: .public), raw length=\(sourceText.count, privacy: .public)")
+            Log.translate.debug("cleanedText snippet=\(String(textToTranslate.prefix(300)), privacy: .public)")
 
             // Our own NLLanguageRecognizer pre-check proved unreliable on
             // German text with tech acronyms/anglicisms (misdetected as

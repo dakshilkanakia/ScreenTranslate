@@ -21,19 +21,26 @@ struct TranslateScreenIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         Log.intent.debug("iOS pipeline started")
 
+        await MainActor.run {
+            // Starts the instant the app opens, so the Dynamic Island shows
+            // "Translating..." right away instead of the user just seeing a
+            // blank app flash open with no feedback.
+            LiveActivityManager.start()
+        }
+
         guard let uiImage = await Self.readClipboardImageWithRetries() else {
             Log.intent.error("no image found on clipboard after retries")
-            await MainActor.run {
-                AppState.shared.pendingSourceText = "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."
-            }
+            let message = "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."
+            await MainActor.run { AppState.shared.pendingSourceText = message }
+            await LiveActivityManager.finish(status: .failed, text: message)
             return .result()
         }
 
         guard let cgImage = uiImage.cgImage else {
             Log.intent.error("clipboard image had no cgImage")
-            await MainActor.run {
-                AppState.shared.pendingSourceText = "Clipboard image couldn't be decoded."
-            }
+            let message = "Clipboard image couldn't be decoded."
+            await MainActor.run { AppState.shared.pendingSourceText = message }
+            await LiveActivityManager.finish(status: .failed, text: message)
             return .result()
         }
 
@@ -42,20 +49,24 @@ struct TranslateScreenIntent: AppIntent {
             text = try await OCRService.extractText(from: cgImage)
         } catch {
             Log.intent.error("OCR failed: \(error.localizedDescription, privacy: .public)")
-            await MainActor.run {
-                AppState.shared.pendingSourceText = "OCR failed: \(error.localizedDescription)"
-            }
+            let message = "OCR failed: \(error.localizedDescription)"
+            await MainActor.run { AppState.shared.pendingSourceText = message }
+            await LiveActivityManager.finish(status: .failed, text: message)
             return .result()
         }
 
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             Log.intent.error("OCR returned empty text")
-            await MainActor.run {
-                AppState.shared.pendingSourceText = "No text found in that screenshot."
-            }
+            let message = "No text found in that screenshot."
+            await MainActor.run { AppState.shared.pendingSourceText = message }
+            await LiveActivityManager.finish(status: .failed, text: message)
             return .result()
         }
 
+        // Actual on-device translation runs in ContentView (needs a live
+        // SwiftUI view — see TranslationSnippetView), which reports back via
+        // AppState.onTranslationComplete once it finishes, updating the Live
+        // Activity from there.
         await MainActor.run {
             AppState.shared.pendingSourceText = text
         }

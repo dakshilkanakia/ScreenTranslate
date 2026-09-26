@@ -3,6 +3,7 @@ import Translation
 
 struct TranslationSnippetView: View {
     let sourceText: String
+    var onComplete: ((ScreenTranslateAttributes.ContentState.Status, String) -> Void)? = nil
 
     @State private var configuration: TranslationSession.Configuration?
     @State private var translatedText: String = ""
@@ -50,6 +51,7 @@ struct TranslationSnippetView: View {
                 translatedText = response.targetText
                 status = .translated
                 Log.translate.debug("iOS snippet: translation succeeded")
+                onComplete?(.done, response.targetText)
             } catch {
                 let nsError = error as NSError
                 Log.translate.error("iOS snippet translation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public)")
@@ -58,8 +60,11 @@ struct TranslationSnippetView: View {
                 if description.localizedCaseInsensitiveContains("match supported locale pair") {
                     status = .translated
                     translatedText = sourceText
+                    onComplete?(.done, sourceText)
                 } else {
-                    status = .error("Translation failed (\(nsError.domain) code \(nsError.code)): \(nsError.localizedDescription)")
+                    let message = "Translation failed (\(nsError.domain) code \(nsError.code)): \(nsError.localizedDescription)"
+                    status = .error(message)
+                    onComplete?(.failed, message)
                 }
             }
         }

@@ -22,7 +22,9 @@ struct ContentView: View {
         if let text = appState.pendingSourceText {
             NavigationStack {
                 ScrollView {
-                    TranslationSnippetView(sourceText: text)
+                    TranslationSnippetView(sourceText: text) { status, finalText in
+                        Task { await LiveActivityManager.finish(status: status, text: finalText) }
+                    }
                 }
                 .navigationTitle("Translation")
                 .navigationBarTitleDisplayMode(.inline)

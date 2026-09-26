@@ -27,7 +27,6 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.screen-capture: true
-        com.apple.developer.siri: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dakshil.ScreenTranslate

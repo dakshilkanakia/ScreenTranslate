@@ -35,10 +35,35 @@ enum ScreenCapture {
         config.height = Int(window.frame.height * 2)
         config.showsCursor = false
 
-        return try await SCScreenshotManager.captureImage(
+        let image = try await SCScreenshotManager.captureImage(
             contentFilter: filter,
             configuration: config
         )
+
+        return cropTopChrome(of: image)
+    }
+
+    /// Browser windows (and many toolbar-heavy apps) put their own chrome —
+    /// tab strip, address bar, "update available" banners — in a fixed-height
+    /// band at the top of the window. That chrome is pure English UI text
+    /// that was skewing language detection on foreign-language pages, so it's
+    /// cropped out before OCR ever sees it. ~92pt covers a typical Chrome tab
+    /// strip + toolbar; doubled to match the 2x capture scale above.
+    private static func cropTopChrome(of image: CGImage) -> CGImage {
+        let cropPoints: CGFloat = 92
+        let captureScale: CGFloat = 2.0 // matches config.width/height * 2 above
+        let cropPixels = Int(cropPoints * captureScale)
+
+        guard cropPixels > 0, cropPixels < image.height else { return image }
+
+        let rect = CGRect(x: 0, y: cropPixels, width: image.width, height: image.height - cropPixels)
+        guard let cropped = image.cropping(to: rect) else {
+            Log.capture.error("failed to crop top chrome, using full image")
+            return image
+        }
+
+        Log.capture.debug("cropped top \(cropPixels, privacy: .public)px chrome, new size=\(cropped.width, privacy: .public)x\(cropped.height, privacy: .public)")
+        return cropped
     }
 
     enum CaptureError: Error {

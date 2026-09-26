@@ -1,11 +1,16 @@
 import AppIntents
 import UIKit
+import UniformTypeIdentifiers
 
 struct TranslateScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Translate My Screen"
     static let description = IntentDescription("OCRs a screenshot you provide and shows a translation.")
 
-    @Parameter(title: "Screenshot")
+    // Without supportedContentTypes, Shortcuts doesn't know this parameter
+    // wants an image, so it falls back to a generic file-picker instead of
+    // offering the "Screenshot" output from a preceding "Take Screenshot"
+    // action as an auto-suggested variable.
+    @Parameter(title: "Screenshot", supportedContentTypes: [.image])
     var screenshot: IntentFile
 
     static var parameterSummary: some ParameterSummary {

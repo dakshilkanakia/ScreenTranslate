@@ -17,7 +17,7 @@ struct TranslateScreenIntent: AppIntent {
 
         guard let uiImage = UIImage(data: screenshot.data), let cgImage = uiImage.cgImage else {
             Log.intent.error("failed to decode screenshot IntentFile data")
-            return .result(view: TranslationSnippetView(sourceText: "Couldn't read the screenshot."))
+            return .result(view: StaticResultView(text: "Couldn't read the screenshot."))
         }
 
         let text: String
@@ -25,15 +25,18 @@ struct TranslateScreenIntent: AppIntent {
             text = try await OCRService.extractText(from: cgImage)
         } catch {
             Log.intent.error("OCR failed: \(error.localizedDescription, privacy: .public)")
-            return .result(view: TranslationSnippetView(sourceText: "OCR failed: \(error.localizedDescription)"))
+            return .result(view: StaticResultView(text: "OCR failed: \(error.localizedDescription)"))
         }
 
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             Log.intent.error("OCR returned empty text")
-            return .result(view: TranslationSnippetView(sourceText: "No text found in that screenshot."))
+            return .result(view: StaticResultView(text: "No text found in that screenshot."))
         }
 
-        return .result(view: TranslationSnippetView(sourceText: text))
+        let targetLanguageCode = Locale.current.language.languageCode?.identifier ?? "en"
+        let translated = await HeadlessTranslator.translate(text, targetLanguageCode: targetLanguageCode)
+
+        return .result(view: StaticResultView(text: translated))
     }
 }
 

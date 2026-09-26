@@ -3,19 +3,21 @@ import UIKit
 
 struct TranslateScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Translate My Screen"
-    static let description = IntentDescription("Reads a screenshot from the clipboard, OCRs it, and shows a translation. Chain it after Shortcuts' \"Take Screenshot\" + \"Copy to Clipboard\" actions.")
+    static let description = IntentDescription("OCRs a screenshot and shows a translation, without opening the app. In Shortcuts, connect \"Take Screenshot\"'s output to this action's Screenshot field by dragging the variable onto it (tapping it opens a manual file picker instead).")
+
+    @Parameter(title: "Screenshot", supportedContentTypes: [.image])
+    var screenshot: IntentFile
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Translate \(\.$screenshot)")
+    }
 
     func perform() async throws -> some IntentResult & ShowsSnippetView {
-        Log.intent.debug("iOS pipeline started")
+        Log.intent.debug("iOS pipeline started (IntentFile variant)")
 
-        guard let uiImage = await Self.readClipboardImageWithRetries() else {
-            Log.intent.error("no image found on clipboard after retries")
-            return .result(view: TranslationSnippetView(sourceText: "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."))
-        }
-
-        guard let cgImage = uiImage.cgImage else {
-            Log.intent.error("clipboard image had no cgImage")
-            return .result(view: TranslationSnippetView(sourceText: "Clipboard image couldn't be decoded."))
+        guard let uiImage = UIImage(data: screenshot.data), let cgImage = uiImage.cgImage else {
+            Log.intent.error("failed to decode screenshot IntentFile data")
+            return .result(view: TranslationSnippetView(sourceText: "Couldn't read the screenshot."))
         }
 
         let text: String
@@ -32,28 +34,6 @@ struct TranslateScreenIntent: AppIntent {
         }
 
         return .result(view: TranslationSnippetView(sourceText: text))
-    }
-
-    /// UIPasteboard.general reads have been unreliable right after Shortcuts'
-    /// "Copy to Clipboard" step when this intent runs via Siri/Shortcuts
-    /// (possibly a permission-prompt or timing race in that execution
-    /// context, vs. a normal foregrounded app). Retries with backoff and logs
-    /// pasteboard state at each attempt to pin down what's actually happening.
-    private static func readClipboardImageWithRetries() async -> UIImage? {
-        for attempt in 1...6 {
-            let pasteboard = UIPasteboard.general
-            Log.intent.debug("clipboard attempt \(attempt, privacy: .public): hasImages=\(pasteboard.hasImages, privacy: .public) numberOfItems=\(pasteboard.numberOfItems, privacy: .public) changeCount=\(pasteboard.changeCount, privacy: .public)")
-
-            if let image = pasteboard.image {
-                Log.intent.debug("clipboard attempt \(attempt, privacy: .public): got image \(image.size.width, privacy: .public)x\(image.size.height, privacy: .public)")
-                return image
-            }
-
-            if attempt < 6 {
-                try? await Task.sleep(nanoseconds: 300_000_000)
-            }
-        }
-        return nil
     }
 }
 

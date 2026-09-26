@@ -1,8 +1,8 @@
 # ScreenTranslate
 
-Say "Hey Siri, translate my screen" — it captures the frontmost window, OCRs the text, translates it, and shows the result in a small floating overlay panel. No app switching, no copy-paste.
+Say "Hey Siri, translate my screen" — it captures whatever's on screen, OCRs the text, and shows a translation. Two targets: a macOS app (floating overlay, stays on top of whatever you were doing) and an iOS app (app opens briefly to show the result — see [iOS](#ios) below for why).
 
-## How it works
+## How it works (macOS)
 
 1. `ScreenCapture.swift` grabs the frontmost app's main window via ScreenCaptureKit (not the whole display — avoids sweeping up other windows), then crops off the top ~92pt to strip out browser chrome (tab strip, address bar, update banners), which otherwise pollutes both OCR and language detection.
 2. `OCRService.swift` runs Vision text recognition on the captured image, sorting results into proper top-to-bottom reading order (Vision's raw array order isn't guaranteed to match it).
@@ -36,14 +36,27 @@ If the app doesn't show up as an action in Shortcuts at all: make sure you're ru
 
 - First use of a new source language triggers a system dialog to download that on-device language model (one-time per language).
 - The top-chrome crop (92pt) is tuned for Chrome's tab strip + toolbar; other apps or a hidden Chrome tab bar may need a different value.
-- macOS only. No draw-over-other-apps overlay exists on iOS, so a phone version would need a different UI approach (App Intent Snippet View) — not built here.
+
+## iOS
+
+Also builds as an iOS app (`ScreenTranslateiOS` target, `Sources/ScreenTranslateiOS/`), with real trade-offs forced by the platform:
+
+- **No self-capture.** iOS blocks an app from capturing another app's screen. The screenshot comes from Shortcuts' own **"Take Screenshot"** action, then **"Copy to Clipboard"**, then our **"Translate My Screen"** action reads it from `UIPasteboard.general`.
+- **The app has to actually open** (`openAppWhenRun = true`). Tried hard to avoid this (see below) — it's required because a background/Siri-triggered execution can't show iOS's cross-app "Allow Paste" consent popup, so clipboard reads silently return empty without it.
+- Translation result is shown in the app's own foreground view (`AppState.pendingSourceText` drives `ContentView`'s content directly — no `.sheet`/`.fullScreenCover`, since presenting one at cold-launch-from-intent time crashes: `-[_UISceneHostingController _setSheetConfiguration:]`).
+- Build the Shortcut once: **Take Screenshot → Copy to Clipboard → Translate My Screen** (no fields to configure on the last step). Trigger by saying the shortcut's own name, same trick as macOS.
+- Requires iOS 18+ (`TranslationSession` API) and a real device — the Simulator can't meaningfully test Siri or the screenshot flow.
+- Free personal-team provisioning on a real iPhone expires after 7 days; rebuild/reinstall from Xcode to renew (or use a paid $99/yr account to avoid this).
+
+**Abandoned approach** (tried, didn't work — kept on branch `ios-intentfile-snippet` for reference): passing the screenshot as a typed `IntentFile` parameter (drag-connected from Shortcuts' "Take Screenshot" output) instead of via the clipboard, paired with a Snippet View (`.result(view:)`) so the app never has to open, staying on top of whatever app you were using. The `IntentFile` + drag-connect part actually worked — no clipboard permission wall. But Siri tears down the remote Snippet View as soon as `perform()` returns, regardless of whether the returned view's own async work (on-device translation) has finished; confirmed on-device that translation succeeded every time, just after the visible UI had already vanished. A headless pre-translation attempt (running the same `.translationTask` via a throwaway `UIHostingController` before returning any view) also failed — a hosting controller never gets a real SwiftUI lifecycle without being attached to an actual window, and there's no window available in a no-app-open execution context. No supported way around this was found.
 
 ## Status
 
-- [x] Frontmost-window capture (ScreenCaptureKit), cropped to skip browser chrome
-- [x] OCR with reading-order sorting (Vision)
+- [x] macOS: frontmost-window capture (ScreenCaptureKit), cropped to skip browser chrome
+- [x] macOS: floating overlay panel
+- [x] OCR with reading-order sorting (Vision, shared by both platforms)
 - [x] On-device translation, framework auto-detects source language (Translation framework)
-- [x] Floating overlay panel
-- [x] Siri/Shortcuts trigger via a real signed app target
+- [x] Siri/Shortcuts trigger via a real signed app target (both platforms)
+- [x] iOS: screenshot via Shortcuts + clipboard, shown in the app's foreground view
 - [ ] Language picker (currently always translates to system language)
-- [ ] iOS target
+- [ ] iOS without opening the app (blocked by the Snippet View teardown timing above)

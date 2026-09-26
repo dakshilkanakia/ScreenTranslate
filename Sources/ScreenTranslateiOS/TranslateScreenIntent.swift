@@ -5,6 +5,13 @@ struct TranslateScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Translate My Screen"
     static let description = IntentDescription("Reads a screenshot from the clipboard, OCRs it, and shows a translation. Chain it after Shortcuts' \"Take Screenshot\" + \"Copy to Clipboard\" actions.")
 
+    // Background/Siri-triggered execution can't show iOS's cross-app "Allow
+    // Paste" consent popup, so UIPasteboard.general reads silently come back
+    // empty in that context (confirmed via logging: numberOfItems=0 on every
+    // retry). Forcing the app to actually open gives it real foreground
+    // status, so the paste-permission prompt can appear and be approved.
+    static let openAppWhenRun: Bool = true
+
     func perform() async throws -> some IntentResult & ShowsSnippetView {
         Log.intent.debug("iOS pipeline started")
 

@@ -1,28 +1,16 @@
 import AppIntents
 import UIKit
-import UniformTypeIdentifiers
 
 struct TranslateScreenIntent: AppIntent {
     static let title: LocalizedStringResource = "Translate My Screen"
-    static let description = IntentDescription("OCRs a screenshot you provide and shows a translation.")
-
-    // Without supportedContentTypes, Shortcuts doesn't know this parameter
-    // wants an image, so it falls back to a generic file-picker instead of
-    // offering the "Screenshot" output from a preceding "Take Screenshot"
-    // action as an auto-suggested variable.
-    @Parameter(title: "Screenshot", supportedContentTypes: [.image])
-    var screenshot: IntentFile
-
-    static var parameterSummary: some ParameterSummary {
-        Summary("Translate \(\.$screenshot)")
-    }
+    static let description = IntentDescription("Reads a screenshot from the clipboard, OCRs it, and shows a translation. Chain it after Shortcuts' \"Take Screenshot\" + \"Copy to Clipboard\" actions.")
 
     func perform() async throws -> some IntentResult & ShowsSnippetView {
         Log.intent.debug("iOS pipeline started")
 
-        guard let uiImage = UIImage(data: screenshot.data), let cgImage = uiImage.cgImage else {
-            Log.intent.error("failed to decode screenshot data")
-            return .result(view: TranslationSnippetView(sourceText: "Couldn't read the screenshot."))
+        guard let uiImage = UIPasteboard.general.image, let cgImage = uiImage.cgImage else {
+            Log.intent.error("no image found on clipboard")
+            return .result(view: TranslationSnippetView(sourceText: "No image found on the clipboard. Make sure \"Take Screenshot\" then \"Copy to Clipboard\" run right before this."))
         }
 
         let text: String

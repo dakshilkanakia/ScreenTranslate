@@ -116,26 +116,24 @@ struct OverlayView: View {
             let textToTranslate = cleanedText.isEmpty ? sourceText : cleanedText
             Log.translate.debug("cleanedText length=\(textToTranslate.count, privacy: .public), raw length=\(sourceText.count, privacy: .public)")
 
-            let detected = Self.dominantLanguage(in: textToTranslate)
-            Log.translate.debug("detected source language=\(detected ?? "nil", privacy: .public), target=\(targetLanguageCode, privacy: .public)")
+            // Our own NLLanguageRecognizer pre-check proved unreliable on
+            // German text with tech acronyms/anglicisms (misdetected as
+            // English), which wrongly skipped translation. Logged only, not
+            // used to gate the decision — let the Translation framework's own
+            // (stronger) detector decide by passing source: nil.
+            let guess = Self.dominantLanguage(in: textToTranslate)
+            Log.translate.debug("informational language guess=\(guess ?? "nil", privacy: .public), target=\(targetLanguageCode, privacy: .public)")
 
-            if let detected, detected == targetLanguageCode {
-                Log.translate.debug("source == target, skipping translation")
-                status = .alreadyTargetLanguage
-                return
-            }
-
-            let sourceLang = detected.map { Locale.Language(identifier: $0) }
             let targetLang = Locale.Language(identifier: targetLanguageCode)
 
             Task {
                 let availability = LanguageAvailability()
-                let installStatus = await availability.status(from: sourceLang ?? targetLang, to: targetLang)
+                let installStatus = await availability.status(from: guess.map { Locale.Language(identifier: $0) } ?? targetLang, to: targetLang)
                 Log.translate.debug("language pair install status=\(String(describing: installStatus), privacy: .public)")
             }
 
             configuration = TranslationSession.Configuration(
-                source: sourceLang,
+                source: nil,
                 target: targetLang
             )
         }
@@ -151,23 +149,22 @@ struct OverlayView: View {
                 let nsError = error as NSError
                 Log.translate.error("translation failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public) userInfo=\(nsError.userInfo, privacy: .public)")
 
-                // If the model needs downloading and the download flow itself
-                // broke (unsigned-app connection drop), say so explicitly
-                // instead of silently pretending nothing needed translating.
-                if nsError.domain == "TranslationErrorDomain" {
-                    status = .error("Translation failed (domain error \(nsError.code)) — check Console app, subsystem com.dakshil.ScreenTranslate, for details. If a language download dialog appeared and vanished, try removing/reinstalling that language in System Settings → General → Language & Region → Translation Languages.")
-                } else {
+                let description = "\(nsError.localizedDescription) \(nsError.userInfo)"
+                let looksLikeSameLanguage = description.localizedCaseInsensitiveContains("match supported locale pair")
+                    && Self.dominantLanguage(in: textToTranslate) == targetLanguageCode
+
+                if looksLikeSameLanguage {
                     status = .alreadyTargetLanguage
+                } else {
+                    status = .error("Translation failed (\(nsError.domain) code \(nsError.code)): \(nsError.localizedDescription). Check Xcode's console for the full log. If a language-download dialog appeared and vanished, try removing/reinstalling that language in System Settings → General → Language & Region → Translation Languages.")
                 }
             }
         }
     }
 
-    /// Detects dominant language on the full cleaned text (not per-line) so
-    /// there's enough context for a confident result, and requires a
-    /// reasonable confidence threshold before trusting it — otherwise a
-    /// misdetected language (e.g. "pl" from a few odd characters) leads to an
-    /// unsupported translation pairing.
+    /// Best-effort informational language guess, weighted toward not being
+    /// fooled by short noise — used only for logging and for interpreting a
+    /// translation failure, never to decide whether to attempt translation.
     private static func dominantLanguage(in text: String) -> String? {
         guard !text.isEmpty else { return nil }
 
